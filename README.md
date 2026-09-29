@@ -1,0 +1,167 @@
+# cilock training: build receipts
+
+A 10-minute, hands-on lesson. A tiny desktop app goes through build, test and package. Every step leaves a signed
+receipt. Before release, one check compares the receipts with a short rulebook and answers **PASS** or **BLOCKED**,
+with the reason.
+
+No supply-chain background needed. Runs on your laptop, fully offline.
+
+## The idea in plain words
+
+Today a release team usually signs and ships the file it is handed. It cannot see what happened before that:
+
+- Was the app built from the right code?
+- Did the tests really run, and pass?
+- Is the file in the package the same file the build produced?
+
+**Receipts answer those questions.** Each build step runs under `cilock run`, which writes a receipt: what command
+ran, which files went in, which files came out, whether it succeeded, and which commit it came from. The build
+machine signs the receipt, so any later edit is detected.
+
+**The rulebook says what a good release looks like.** In this lesson it has three rules:
+
+1. The build ran and finished cleanly.
+2. The tests ran against that build and passed.
+3. The package holds the exact binary the build produced.
+
+The release team signs the rulebook, so it cannot be changed quietly.
+
+**One check before release.** `cilock verify` reads the package, the receipts and the signed rulebook:
+
+```
+  ✅ PASS: every rule met. OK to sign and release.
+```
+
+or
+
+```
+  ⛔ BLOCKED: do not release.
+    The photo-lite in the package is not the one the build produced.
+    (cilock: mismatched digests for photo-lite)
+```
+
+The lesson runs four cases:
+
+| Case | Result | Why |
+|---|---|---|
+| Normal release | ✅ PASS | All three rules hold |
+| Binary swapped after the tests, then packaged | ⛔ BLOCKED | Rule 3: the packaged binary is not the built one |
+| Tests skipped | ⛔ BLOCKED | Rule 2: no receipt for the `test` step |
+| Tests failed, release went ahead | ⛔ BLOCKED | Rule 2: the test receipt records exit code 3 |
+
+## Quickstart
+
+You need `git`, `openssl`, `tar`, `python3`, a C compiler (`cc`, `gcc` or `clang`; set `CC=` to pick one), and
+cilock.
+
+### Install cilock
+
+The lesson uses flags that are newer than the current packaged release (`--material-manifest` on `cilock run`,
+`--offline` on `cilock verify` and `cilock sign`). Until a release includes them, build cilock from source at the
+commit this lesson is tested against (needs Go 1.26):
+
+```bash
+scripts/install-cilock.sh          # builds ./bin/cilock from aflock-ai/rookery at a pinned commit
+export PATH="$PWD/bin:$PATH"
+```
+
+Once a newer release is out, `brew install aflock-ai/tap/cilock` or a download from
+[aflock-ai/cilock](https://github.com/aflock-ai/cilock) will work the same way. Check with
+`cilock run --help | grep material-manifest`.
+
+### Run the lesson
+
+```bash
+./demo.sh                  # paced for reading
+DEMO_FAST=1 ./demo.sh      # no pauses
+```
+
+Everything the lesson creates goes in `./lesson-work/` (keys, receipts, policy, logs). The script exits 0 only if
+all four cases end as described above.
+
+**Windows:** run it from Git Bash with a C compiler on `PATH` (for example MinGW `gcc`). CI runs it on
+`windows-latest`; see the [workflow](.github/workflows/lesson.yml) for the current result.
+
+## How it works
+
+The script prints every cilock command in full before it runs it. These are the ones that matter.
+
+**1. Keys.** Two ed25519 keys: one for the build machine (signs receipts), one for the release team (signs the
+rulebook). In production the build machine would use short-lived certificates from your signing service instead
+of a key file.
+
+**2. The rulebook** is a cilock policy built from the three files in `rules/` by `tools/make_policy.py`. Each step
+lists who may sign its receipt and a Rego rule its `command-run` attestation must pass. `test` and `package` also
+declare `artifactsFrom: ["build"]`, which is what enforces rule 3.
+
+```bash
+python3 tools/make_policy.py keys/build-machine.pub policy/policy.json
+cilock policy validate -p policy/policy.json
+cilock sign --offline -k keys/release-team.key -f policy/policy.json -o policy/policy.signed.json
+```
+
+**3. Receipts.** Each existing command is prefixed with `cilock run --step <name> ... --`:
+
+```bash
+cilock run --step build   -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+    -o evidence/build.json   -- cc app/photo_lite.c -o photo-lite
+cilock run --step test    -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+    -o evidence/test.json    -- ./photo-lite
+cilock run --step package -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+    -o evidence/package.json -- tar czf photo-lite.tar.gz photo-lite
+```
+
+`tools/show_receipt.py evidence/build.json` prints one in plain English.
+
+**4. The check:**
+
+```bash
+cilock verify photo-lite.tar.gz \
+    -p policy/policy.signed.json -k keys/release-team.pub \
+    -s "sha1:$(git rev-parse HEAD)" --offline \
+    -a evidence/build.json -a evidence/test.json -a evidence/package.json
+```
+
+Exit code 0 is PASS. Anything else is BLOCKED, and the log says which step and rule failed. Branch on the exit
+code, not on grepped output.
+
+In `demo.sh`, `demo_step` and `demo_verify` are script helpers that print and run exactly these commands with the
+lesson's paths. They are not cilock commands.
+
+## Gotchas
+
+These cost real time while building the lesson.
+
+- **Keep receipts outside the build workspace.** A step's inputs are every file in its working directory. If
+  `build.json` is written inside the project folder, the `test` step sees it as an input that no earlier step
+  produced, and `artifactsFrom` rejects it ("material(s) not produced by any artifactsFrom step"). The lesson
+  writes receipts to `../evidence/`.
+- **`--material-manifest` is required for `artifactsFrom`.** Without it, recent cilock builds omit the per-file
+  input list, and verify fails with "required file inventory is unavailable: material details were omitted".
+- **Seed verify with the commit.** `-s sha1:<commit>` ties all three receipts to one release. With only the package
+  file as the seed, the build and test receipts are not found, because their outputs are not the package.
+- **Key ID is the sha256 of the public key PEM file.** The policy's `publickeys` entry must use that exact ID, or
+  the policy fails to load.
+- **Guard Rego rules with a helper.** `deny[msg] { not is_number(input.exitcode) ... }` never fires when the field is
+  missing. Use a helper rule (`has_exit_code { is_number(input.exitcode) }`) and write `not has_exit_code` in the
+  deny. cilock warns about the broken form.
+- **`-a git` narrows the default attestors** (`environment,git,platform`) to just the commit record, which keeps the
+  lesson offline and keeps environment variables out of the receipts.
+- **A failed step still writes a receipt.** `cilock run` exits non-zero, but the receipt records the failure, so the
+  rulebook can reject it with a clear reason.
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `demo.sh` | The lesson |
+| `app/photo_lite.c` | The app |
+| `rules/*.rego` | One rule per step |
+| `tools/make_policy.py` | Builds the policy (rulebook) from the rules |
+| `tools/show_receipt.py` | Prints a receipt in plain English |
+| `scripts/install-cilock.sh` | Builds cilock from rookery at the pinned commit |
+| `.github/workflows/lesson.yml` | Runs the lesson on Linux, macOS and Windows |
+
+## License
+
+Apache-2.0
