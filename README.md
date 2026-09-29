@@ -4,7 +4,8 @@ A 10-minute, hands-on lesson. A tiny desktop app goes through build, test and pa
 receipt. Before release, one check compares the receipts with a short rulebook and answers **PASS** or **BLOCKED**,
 with the reason.
 
-No supply-chain background needed. Runs on your laptop, fully offline.
+No supply-chain background needed. Runs on your laptop. The only network use is cilock fetching a signed
+timestamp from a public timestamp server (TSA); nothing is uploaded.
 
 ## The idea in plain words
 
@@ -56,8 +57,7 @@ cilock.
 
 ### Install cilock
 
-The lesson uses flags that are newer than the current packaged release (`--material-manifest` on `cilock run`,
-`--offline` on `cilock verify` and `cilock sign`). Until a release includes them, build cilock from source at the
+The lesson uses a flag that is newer than the current packaged release (`--material-manifest` on `cilock run`). Until a release includes them, build cilock from source at the
 commit this lesson is tested against (needs Go 1.26):
 
 ```bash
@@ -97,17 +97,17 @@ declare `artifactsFrom: ["build"]`, which is what enforces rule 3.
 ```bash
 python3 tools/make_policy.py keys/build-machine.pub policy/policy.json
 cilock policy validate -p policy/policy.json
-cilock sign --offline -k keys/release-team.key -f policy/policy.json -o policy/policy.signed.json
+cilock sign -k keys/release-team.key -f policy/policy.json -o policy/policy.signed.json
 ```
 
 **3. Receipts.** Each existing command is prefixed with `cilock run --step <name> ... --`:
 
 ```bash
-cilock run --step build   -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+cilock run --step build   -k keys/build-machine.key -a git --material-manifest \
     -o evidence/build.json   -- cc app/photo_lite.c -o photo-lite
-cilock run --step test    -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+cilock run --step test    -k keys/build-machine.key -a git --material-manifest \
     -o evidence/test.json    -- ./photo-lite
-cilock run --step package -k keys/build-machine.key -a git --platform-url "" --material-manifest \
+cilock run --step package -k keys/build-machine.key -a git --material-manifest \
     -o evidence/package.json -- tar czf photo-lite.tar.gz photo-lite
 ```
 
@@ -118,7 +118,7 @@ cilock run --step package -k keys/build-machine.key -a git --platform-url "" --m
 ```bash
 cilock verify photo-lite.tar.gz \
     -p policy/policy.signed.json -k keys/release-team.pub \
-    -s "sha1:$(git rev-parse HEAD)" --offline \
+    -s "sha1:$(git rev-parse HEAD)" \
     -a evidence/build.json -a evidence/test.json -a evidence/package.json
 ```
 
@@ -187,7 +187,7 @@ These cost real time while building the lesson.
   missing. Use a helper rule (`has_exit_code { is_number(input.exitcode) }`) and write `not has_exit_code` in the
   deny. cilock warns about the broken form.
 - **`-a git` narrows the default attestors** (`environment,git,platform`) to just the commit record, which keeps the
-  lesson offline and keeps environment variables out of the receipts.
+  receipts small and keeps environment variables out of them.
 - **A failed step still writes a receipt.** `cilock run` exits non-zero, but the receipt records the failure, so the
   rulebook can reject it with a clear reason.
 

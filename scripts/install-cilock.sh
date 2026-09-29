@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Build cilock from aflock-ai/rookery source at a pinned commit into ./bin.
 #
-# Why source: the lesson uses flags (--material-manifest on `cilock run`,
-# --offline on `cilock verify` and `cilock sign`) that are newer than the
-# current packaged release. Once a release includes them, install that instead.
+# Why source: the lesson uses --material-manifest on `cilock run`, which is
+# newer than the current packaged release. Once a release includes them, install that instead.
 #
 # Needs: git and Go (version from rookery's cilock/go.mod).
 #   scripts/install-cilock.sh              # pinned commit
