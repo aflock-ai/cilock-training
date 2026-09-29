@@ -128,6 +128,46 @@ code, not on grepped output.
 In `demo.sh`, `demo_step` and `demo_verify` are script helpers that print and run exactly these commands with the
 lesson's paths. They are not cilock commands.
 
+## Lesson 2: iterate a policy against known-good and known-bad builds (the loop an AI agent runs)
+
+Lesson 1 hands you a finished policy. Lesson 2 shows how you get there: write a first draft, test it against builds
+whose right answer you already know, fix what the tests show, repeat. The loop is mechanical, so an AI agent can run
+it, as long as a person decides what the fixtures are and what counts as done.
+
+```bash
+./lesson2.sh
+```
+
+It builds four fixtures once, each a real set of signed receipts:
+
+| Fixture | What happened | Right answer |
+|---|---|---|
+| `good` | build, test, package | PASS |
+| `swapped` | binary replaced before packaging | BLOCKED |
+| `skipped` | no test step | BLOCKED |
+| `failed` | test step exits 3 | BLOCKED |
+
+Then three rounds. Each round builds the policy, runs `cilock policy validate`, signs it, and runs `cilock verify`
+against every fixture:
+
+| Round | Change | Validate findings | Verdicts correct |
+|---|---|---|---|
+| 1 | First draft (`rules-v1/`, no `artifactsFrom`) | 6 | 3/4: the swapped binary passes |
+| 2 | Add `artifactsFrom` so test and package must use the build's output | 6 | 4/4 |
+| 3 | Fix the Rego guard the validator flagged (`rules/`) | 0 | 4/4 |
+
+**Stop condition: zero validate findings and all four verdicts correct.** Round 2 already gets every verdict right,
+but the validator still reports that `not is_number(input.exitcode)` inside `deny` can never fire when the field is
+missing, so a receipt without an exit code would pass. The fixtures do not cover that case; the validator does.
+That is why the stop condition needs both.
+
+`cilock policy validate` prints `Policy validation: PASSED` even when it lists findings, and exits 0. Count the
+numbered findings; do not trust the exit code. The script does this.
+
+Each round is recorded in `lesson2-work/loop.jsonl`: the policy, the validate output, each verdict and the time.
+The script exits 0 only if the three rounds end as in the table. It avoids bash associative arrays, so it runs
+on the bash 3.2 that macOS ships.
+
 ## Gotchas
 
 These cost real time while building the lesson.
@@ -158,7 +198,9 @@ These cost real time while building the lesson.
 | `demo.sh` | The lesson |
 | `app/photo_lite.c` | The app |
 | `rules/*.rego` | One rule per step |
-| `tools/make_policy.py` | Builds the policy (rulebook) from the rules |
+| `lesson2.sh` | Lesson 2: the policy iteration loop |
+| `rules-v1/*.rego` | Lesson 2's deliberately weak first draft |
+| `tools/make_policy.py` | Builds the policy (rulebook) from the rules (`--rules DIR`, `--no-artifacts-from`) |
 | `tools/show_receipt.py` | Prints a receipt in plain English |
 | `scripts/install-cilock.sh` | Builds cilock from rookery at the pinned commit |
 | `.github/workflows/lesson.yml` | Runs the lesson on Linux, macOS and Windows |

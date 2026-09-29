@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Assemble the lesson policy (the "rulebook") from rules/*.rego.
 
-Usage: make_policy.py <build-machine-public-key.pem> <out.json>
+Usage: make_policy.py <build-machine-public-key.pem> <out.json> [--rules DIR] [--no-artifacts-from]
+
+  --rules DIR            read <step>.rego from DIR instead of rules/ (lesson 2 uses rules-v1/)
+  --no-artifacts-from    leave out artifactsFrom, so nothing ties test and package to the build
 
 The policy has three steps: build, test, package. Each needs a receipt
 (a cilock attestation collection) signed by the build machine key, and each
@@ -16,7 +19,7 @@ import json
 import pathlib
 import sys
 
-RULES = pathlib.Path(__file__).resolve().parent.parent / "rules"
+DEFAULT_RULES = pathlib.Path(__file__).resolve().parent.parent / "rules"
 COMMAND_RUN = "https://aflock.ai/attestations/command-run/v0.2"
 
 
@@ -33,7 +36,15 @@ def canonical_pem(data):
 
 
 def main():
-    pub_path, out_path = sys.argv[1], sys.argv[2]
+    args = sys.argv[1:]
+    rules = DEFAULT_RULES
+    if "--rules" in args:
+        i = args.index("--rules")
+        rules = pathlib.Path(args[i + 1]).resolve()
+        del args[i:i + 2]
+    chain = "--no-artifacts-from" not in args
+    args = [a for a in args if a != "--no-artifacts-from"]
+    pub_path, out_path = args
     pub = canonical_pem(pathlib.Path(pub_path).read_bytes())
     # cilock's key ID is the sha256 of the key re-encoded as PEM by Go
     # (cryptoutil.GeneratePublicKeyID), not of the file on disk.
@@ -47,11 +58,11 @@ def main():
                 "type": COMMAND_RUN,
                 "regopolicies": [{
                     "name": name,
-                    "module": base64.b64encode((RULES / f"{name}.rego").read_bytes()).decode(),
+                    "module": base64.b64encode((rules / f"{name}.rego").read_bytes()).decode(),
                 }],
             }],
         }
-        if artifacts_from:
+        if artifacts_from and chain:
             s["artifactsFrom"] = artifacts_from
         return s
 
