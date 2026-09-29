@@ -20,10 +20,23 @@ RULES = pathlib.Path(__file__).resolve().parent.parent / "rules"
 COMMAND_RUN = "https://aflock.ai/attestations/command-run/v0.2"
 
 
+def canonical_pem(data):
+    """Re-encode a PEM public key the way Go's pem.EncodeToMemory does:
+    LF line endings, base64 wrapped at 64 columns. On Windows, openssl
+    writes CRLF, and hashing those bytes gives the wrong key ID."""
+    lines = [l.strip() for l in data.decode().splitlines()]
+    body = "".join(l for l in lines if l and not l.startswith("-----"))
+    der = base64.b64decode(body)
+    b64 = base64.b64encode(der).decode()
+    wrapped = "\n".join(b64[i:i + 64] for i in range(0, len(b64), 64))
+    return f"-----BEGIN PUBLIC KEY-----\n{wrapped}\n-----END PUBLIC KEY-----\n".encode()
+
+
 def main():
     pub_path, out_path = sys.argv[1], sys.argv[2]
-    pub = pathlib.Path(pub_path).read_bytes()
-    # cilock's key ID for a file key is the sha256 of the PEM bytes.
+    pub = canonical_pem(pathlib.Path(pub_path).read_bytes())
+    # cilock's key ID is the sha256 of the key re-encoded as PEM by Go
+    # (cryptoutil.GeneratePublicKeyID), not of the file on disk.
     keyid = hashlib.sha256(pub).hexdigest()
 
     def step(name, artifacts_from=None):

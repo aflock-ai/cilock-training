@@ -151,7 +151,7 @@ fresh_run() { rm -f ../evidence/* "$BIN" photo-lite.tar.gz; }
 
 setup || { echo "setup failed"; exit 2; }
 cd "$WORK/project" || exit 2
-REPO_REL=$("$PY" -c 'import os,sys; print(os.path.relpath(sys.argv[1]))' "$LESSON_DIR")
+REPO_REL=$("$PY" -c 'import os,sys; print(os.path.relpath(sys.argv[1]).replace(os.sep, "/"))' "$LESSON_DIR")
 
 echo "${B}Build receipts with cilock: a small desktop app, checked before release${RS}"
 note "Working folder: $WORK"
