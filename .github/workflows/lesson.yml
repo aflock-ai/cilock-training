@@ -1,7 +1,8 @@
 name: lesson
 
-# Runs the full lesson on Linux, macOS and Windows and fails if any of the
-# four cases (1 PASS, 3 BLOCKED) ends differently. demo.sh asserts each
+# Runs both lessons on Linux, macOS and Windows. Lesson 1 fails if any of the
+# four cases (1 PASS, 3 BLOCKED) ends differently; lesson 2 fails unless the
+# three policy rounds end at 6/3, 6/4 and 0/4 (findings / verdicts correct). demo.sh asserts each
 # case by cilock's exit code and the reason in its log, and exits non-zero
 # on any mismatch.
 
@@ -50,6 +51,12 @@ jobs:
           EXE=""; [[ "$RUNNER_OS" == Windows ]] && EXE=.exe
           CILOCK="$PWD/bin/cilock$EXE" ./demo.sh
 
+      - name: "Run lesson 2 (policy loop: expect 6/3, 6/4, 0/4)"
+        run: |
+          EXE=""; [[ "$RUNNER_OS" == Windows ]] && EXE=.exe
+          echo "bash $BASH_VERSION"
+          CILOCK="$PWD/bin/cilock$EXE" ./lesson2.sh
+
       - name: Upload evidence and logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -59,4 +66,6 @@ jobs:
             lesson-work/evidence/
             lesson-work/policy/
             lesson-work/logs/
+            lesson2-work/loop.jsonl
+            lesson2-work/rounds/
           if-no-files-found: warn
