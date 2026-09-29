@@ -140,8 +140,9 @@ These cost real time while building the lesson.
   input list, and verify fails with "required file inventory is unavailable: material details were omitted".
 - **Seed verify with the commit.** `-s sha1:<commit>` ties all three receipts to one release. With only the package
   file as the seed, the build and test receipts are not found, because their outputs are not the package.
-- **Key ID is the sha256 of the public key PEM file.** The policy's `publickeys` entry must use that exact ID, or
-  the policy fails to load.
+- **Key ID is the sha256 of the public key as Go re-encodes it**, PEM with LF line endings. That equals the sha256
+  of the `.pub` file on Linux and macOS, but not on Windows, where openssl writes CRLF. Hashing the raw file there
+  gives "public key in policy has expected key id ... but got ...". `tools/make_policy.py` re-encodes the key first.
 - **Guard Rego rules with a helper.** `deny[msg] { not is_number(input.exitcode) ... }` never fires when the field is
   missing. Use a helper rule (`has_exit_code { is_number(input.exitcode) }`) and write `not has_exit_code` in the
   deny. cilock warns about the broken form.
