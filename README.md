@@ -7,6 +7,18 @@ with the reason.
 No supply-chain background needed. Runs on your laptop. The only network use is cilock fetching a signed
 timestamp from a public timestamp server (TSA); nothing is uploaded.
 
+## Watch first (5.5 min, subtitled)
+
+- [Explainer video, subtitled](media/cilock-build-receipts-explainer.mp4)
+- [Explainer video, narrated and subtitled](media/cilock-build-receipts-explainer-narrated.mp4)
+- [Slides (PDF)](media/cilock-build-receipts-slides.pdf) · [one-page summary (PDF)](media/cilock-build-receipts-onepager.pdf) · [slides (HTML, download and open in a browser)](media/cilock-build-receipts-slides.html)
+
+It covers both lessons: receipts and the one check before release, the three ways a release gets blocked, where the
+two commands go in CI, and iterating the policy until it is right.
+
+Commands, verdicts and timings on screen come from a real run of this lesson on Linux; the policy iteration table
+comes from the policy test harness.
+
 ## The idea in plain words
 
 Today a release team usually signs and ships the file it is handed. It cannot see what happened before that:
@@ -203,7 +215,8 @@ These cost real time while building the lesson.
 | `tools/make_policy.py` | Builds the policy (rulebook) from the rules (`--rules DIR`, `--no-artifacts-from`) |
 | `tools/show_receipt.py` | Prints a receipt in plain English |
 | `scripts/install-cilock.sh` | Builds cilock from rookery at the pinned commit |
-| `.github/workflows/lesson.yml` | Runs the lesson on Linux, macOS and Windows |
+| `.github/workflows/lesson.yml` | Runs both lessons on Linux, macOS and Windows |
+| `media/` | Explainer video (subtitled and narrated), slides, one-page summary |
 
 ## License
 
